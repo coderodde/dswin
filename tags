@@ -1,0 +1,4 @@
+home %USERPROFILE%
+down %USERPROFILE%\Downloads
+docs %USERPROFILE%\Documents
+root C:\
