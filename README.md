@@ -4,6 +4,7 @@
 
 1. Compile `main.cpp` to `dswin.exe`
 2. Copy files `dswin.exe`, `ds.cmd`, `tags` to the user profile directory (`%USERPROFILE% = C:\Users\<username>`)
+3. Add `C:\Users\<username>` to `PATH`.
 
 # Using
 
