@@ -232,7 +232,7 @@ static void process_previous_no_tag_entry(vector<DirectoryTagEntry>& entries) {
 }
 
 static void save_tag_file(vector<DirectoryTagEntry> const& entries,
-	ofstream& ofs) {
+						  ofstream& ofs) {
 	size_t index = 0;
 
 	for (DirectoryTagEntry const& entry : entries) {
@@ -244,6 +244,8 @@ static void save_tag_file(vector<DirectoryTagEntry> const& entries,
 
 		index++;
 	}
+
+	ofs.close();
 }
 
 static void process_switch_to_previous(
@@ -326,21 +328,8 @@ static void create_previous_tag_entry() {
 	}
 
 	ifs.close();
-
 	ofstream ofs = get_tag_file_ofstream(get_tag_file_path());
-	size_t index = 0;
-
-	for (DirectoryTagEntry const& entry : entries) {
-		ofs << entry.get_tag() << " " << entry.get_dir();
-
-		if (index < entries.size() - 1) {
-			ofs << "\n";
-		}
-
-		index++;
-	}
-
-	ofs.close();
+	save_tag_file(entries, ofs);
 }
 
 int main(int argc, char* argv[]) {
