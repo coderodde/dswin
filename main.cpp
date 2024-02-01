@@ -1,4 +1,6 @@
+#ifdef _WIN32
 #define _CRT_SECURE_NO_WARNINGS
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -8,49 +10,40 @@
 #include <iostream>
 #include <ostream>
 #include <string>
+
+#ifdef _WIN32
 #include <ShlObj.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <pwd.h>
+#endif
 #include <vector>
 
-using std::cerr;
-using std::cout;
-using std::find_if;
-using std::getline;
-using std::ifstream;
-using std::ios_base;
-using std::isspace;
-using std::istream;
-using std::malloc;
-using std::min;
-using std::ofstream;
-using std::ostream;
-using std::size_t;
-using std::strcpy;
-using std::strlen;
-using std::string;
-using std::vector;
+static const std::string TAG_FILE_NAME = "tags";
+static const std::string COMMAND_FILE_NAME = "ds_command";
+static const std::string PREVIOUS_DIRECTORY_TAG_NAME = "previous_directory";
 
-static const string TAG_FILE_NAME = "tags";
-static const string COMMAND_FILE_NAME = "ds_command.cmd";
-static const string PREVIOUS_DIRECTORY_TAG_NAME = "previous_directory";
-
-static inline void ltrim(std::string& s) {
+static void ltrim(std::string& s) {
 	s.erase(s.begin(), find_if(s.begin(), s.end(), [](unsigned char ch) {
 		return !isspace(ch);
 		}));
 }
 
-static inline void rtrim(std::string& s) {
+static void rtrim(std::string& s) {
 	s.erase(find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
 		return !isspace(ch);
 		}).base(), s.end());
 }
 
-static inline void trim(std::string& s) {
+static void trim(std::string& s) {
 	rtrim(s);
 	ltrim(s);
 }
 
+#ifdef _WIN32
 static char* get_home_directory_name() {
+
 	CHAR path[MAX_PATH];
 	// Load the home path name:
 	SHGetFolderPathA(NULL, CSIDL_PROFILE, NULL, 0, path);
@@ -65,28 +58,34 @@ static char* get_home_directory_name() {
 
 	return copy_path;
 }
+#else
+static char* get_home_directory_name() {
+	struct passwd *pw = getpwuid(getuid());
+	return pw->pw_dir;
+}
+#endif
 
-static ifstream get_tag_file_ifstream(string const& tag_file_path) {
-	ifstream ifs(tag_file_path);
+static std::ifstream get_tag_file_ifstream(std::string const& tag_file_path) {
+	std::ifstream ifs(tag_file_path);
 	return ifs;
 }
 
-static ofstream get_tag_file_ofstream(string const& tag_file_path) {
-	ofstream ofs(tag_file_path, ios_base::trunc);
+static std::ofstream get_tag_file_ofstream(std::string const& tag_file_path) {
+	std::ofstream ofs(tag_file_path, std::ios_base::trunc);
 	return ofs;
 }
 
-static ofstream get_command_file_stream(string const& command_file_path) {
-	ofstream ofs(command_file_path, ios_base::trunc);
+static std::ofstream get_command_file_stream(std::string const& command_file_path) {
+	std::ofstream ofs(command_file_path, std::ios_base::trunc);
 	return ofs;
 }
 
-static size_t levenshtein_distance(string const& str1, string const& str2) {
-	vector<vector<size_t>> matrix;
+static size_t levenshtein_distance(std::string const& str1, std::string const& str2) {
+	std::vector<std::vector<size_t>> matrix;
 
 	// Initialize the matrix setting all entries to zero:
 	for (size_t row_index = 0; row_index <= str1.length(); row_index++) {
-		vector<size_t> row_vector;
+		std::vector<std::size_t> row_vector;
 		row_vector.resize(str2.length() + 1);
 		matrix.push_back(row_vector);
 	}
@@ -117,59 +116,73 @@ static size_t levenshtein_distance(string const& str1, string const& str2) {
 				substitution_cost = 1;
 			}
 
+			size_t a = matrix.at(row_index - 1).at(column_index) + 1;
+			size_t b = matrix.at(row_index).at(column_index - 1) + 1;
+			size_t c = matrix.at(row_index - 1).at(column_index - 1) + substitution_cost;
+			size_t minab = std::min(a, b);
+			matrix.at(row_index).at(column_index) = std::min(minab, c);
+			/*
 			matrix.at(row_index).at(column_index) =
-				min(min(matrix.at(row_index - 1).at(column_index) + 1,
+				std::min(std::min(matrix.at(row_index - 1).at(column_index) + 1,
 					matrix.at(row_index).at(column_index - 1) + 1),
 					matrix.at(row_index - 1)
-					.at(column_index - 1) + substitution_cost);
+					.at(column_index - 1) + substitution_cost);*/
 		}
 	}
 
 	return matrix.at(str1.length()).at(str2.length());
 }
 
-static string get_current_directory_name() {
+#ifdef _WIN32
+static std::string get_current_directory_name() {
 	char path_name[MAX_PATH];
 	GetCurrentDirectoryA(MAX_PATH - 1, path_name);
-	return string(path_name);
+	return std::string(path_name);
 }
+#else
+static std::string get_current_directory_name() {
+	char cwd[4096];
+	getcwd(cwd, sizeof(cwd));
+	return cwd;
+}
+#endif
 
 class DirectoryTagEntry {
 private:
-	string tag;
-	string dir;
+	std::string tag;
+	std::string dir;
 
 public:
-	DirectoryTagEntry(string tag_, string dir_) :
+	DirectoryTagEntry(std::string tag_, std::string dir_) :
 		tag{ tag_ },
 		dir{ dir_ }
 	{
 
 	}
 
-	string get_tag() const {
+	std::string get_tag() const {
 		return tag;
 	}
 
-	string get_dir() const {
+	std::string get_dir() const {
 		return dir;
 	}
 
-	void set_dir(string const& new_dir) {
+	void set_dir(std::string const& new_dir) {
 		dir = new_dir;
 	}
 };
 
-std::ostream& operator << (ostream& os, DirectoryTagEntry const& dte) {
+std::ostream& operator << (std::ostream& os, DirectoryTagEntry const& dte) {
 	os << dte.get_tag() << " " << dte.get_dir();
 	return os;
 }
 
-std::istream& operator >> (istream& is, vector<DirectoryTagEntry>& entries) {
-	string tag;
-	string dir;
+std::istream& operator >> (std::istream& is, std::vector<DirectoryTagEntry>& entries) {
+	std::string tag;
+	std::string dir;
 	is >> tag;
-	getline(is, dir);
+	std::getline(is, dir);
 	trim(tag);
 	trim(dir);
 	DirectoryTagEntry dte(tag, dir);
@@ -177,21 +190,21 @@ std::istream& operator >> (istream& is, vector<DirectoryTagEntry>& entries) {
 	return is;
 }
 
-static string get_tag_file_path() {
-	return get_home_directory_name() + string("\\") + TAG_FILE_NAME;
+static std::string get_tag_file_path() {
+	return get_home_directory_name() + std::string("\\") + TAG_FILE_NAME;
 }
 
-static string get_cmd_file_path() {
-	return get_home_directory_name() + string("\\") + COMMAND_FILE_NAME;
+static std::string get_cmd_file_path() {
+	return get_home_directory_name() + std::string("\\") + COMMAND_FILE_NAME;
 }
 
 static bool tag_matches_previous_directory_tag(DirectoryTagEntry& entry) {
 	return entry.get_tag() == PREVIOUS_DIRECTORY_TAG_NAME;
 }
 
-static vector<DirectoryTagEntry>::iterator
+static std::vector<DirectoryTagEntry>::iterator
 find_previous_directory_tag_entry_iterator(
-	vector<DirectoryTagEntry>& entries) {
+	std::vector<DirectoryTagEntry>& entries) {
 	return find_if(entries.begin(),
 		entries.end(),
 		[](DirectoryTagEntry& entry) {
@@ -199,13 +212,13 @@ find_previous_directory_tag_entry_iterator(
 		});
 }
 
-static void process_previous_no_tag_entry(vector<DirectoryTagEntry>& entries) {
-	string current_path = get_current_directory_name();
+static void process_previous_no_tag_entry(std::vector<DirectoryTagEntry>& entries) {
+	std::string current_path = get_current_directory_name();
 	DirectoryTagEntry dte(PREVIOUS_DIRECTORY_TAG_NAME, current_path);
 	entries.push_back(dte);
 
-	ofstream tag_file_ofs = get_tag_file_ofstream(get_tag_file_path());
-	ofstream cmd_file_ofs = get_command_file_stream(get_cmd_file_path());
+	std::ofstream tag_file_ofs = get_tag_file_ofstream(get_tag_file_path());
+	std::ofstream cmd_file_ofs = get_command_file_stream(get_cmd_file_path());
 	size_t index = 0;
 
 	for (DirectoryTagEntry const& dte : entries) {
@@ -231,8 +244,8 @@ static void process_previous_no_tag_entry(vector<DirectoryTagEntry>& entries) {
 	cmd_file_ofs.close();
 }
 
-static void save_tag_file(vector<DirectoryTagEntry> const& entries,
-						  ofstream& ofs) {
+static void save_tag_file(std::vector<DirectoryTagEntry> const& entries,
+	std::ofstream& ofs) {
 	size_t index = 0;
 
 	for (DirectoryTagEntry const& entry : entries) {
@@ -244,38 +257,36 @@ static void save_tag_file(vector<DirectoryTagEntry> const& entries,
 
 		index++;
 	}
-
-	ofs.close();
 }
 
 static void process_switch_to_previous(
-	vector<DirectoryTagEntry>& entries,
-	vector<DirectoryTagEntry>::iterator
+	std::vector<DirectoryTagEntry>& entries,
+	std::vector<DirectoryTagEntry>::iterator
 	previous_directory_tag_entry_const_iterator) {
 
-	string next_directory_path =
+	std::string next_directory_path =
 		(*previous_directory_tag_entry_const_iterator).get_dir();
 
-	ofstream cmd_file_ofs = get_command_file_stream(get_cmd_file_path());
+	std::ofstream cmd_file_ofs = get_command_file_stream(get_cmd_file_path());
 
 	cmd_file_ofs << "cd " << next_directory_path;
 	cmd_file_ofs.close();
 
-	string current_directory_path = get_current_directory_name();
+	std::string current_directory_path = get_current_directory_name();
 
 	(*previous_directory_tag_entry_const_iterator)
 		.set_dir(current_directory_path);
 
-	ofstream tag_file_ofs = get_tag_file_ofstream(get_tag_file_path());
+	std::ofstream tag_file_ofs = get_tag_file_ofstream(get_tag_file_path());
 
 	save_tag_file(entries, tag_file_ofs);
 	tag_file_ofs.close();
 }
 
 static void process_previous() {
-	vector<DirectoryTagEntry> entries;
-	string tag_file_path = get_tag_file_path();
-	ifstream ifs = get_tag_file_ifstream(tag_file_path);
+	std::vector<DirectoryTagEntry> entries;
+	std::string tag_file_path = get_tag_file_path();
+	std::ifstream ifs = get_tag_file_ifstream(tag_file_path);
 
 	while (!ifs.eof() && ifs.good()) {
 		ifs >> entries;
@@ -283,7 +294,7 @@ static void process_previous() {
 
 	ifs.close();
 
-	vector<DirectoryTagEntry>::iterator
+	std::vector<DirectoryTagEntry>::iterator
 		previous_directory_tag_entry_iterator =
 		find_previous_directory_tag_entry_iterator(entries);
 
@@ -296,17 +307,17 @@ static void process_previous() {
 }
 
 static void create_previous_tag_entry() {
-	string current_directory_path = get_current_directory_name();
-	ifstream ifs = get_tag_file_ifstream(get_tag_file_path());
-	vector<DirectoryTagEntry> entries;
+	std::string current_directory_path = get_current_directory_name();
+	std::ifstream ifs = get_tag_file_ifstream(get_tag_file_path());
+	std::vector<DirectoryTagEntry> entries;
 	bool previous_entry_updated = false;
 
 	while (!ifs.eof() && ifs.good()) {
-		string tag;
-		string dir;
+		std::string tag;
+		std::string dir;
 
 		ifs >> tag;
-		getline(ifs, dir);
+		std::getline(ifs, dir);
 
 		trim(tag);
 		trim(dir);
@@ -328,7 +339,8 @@ static void create_previous_tag_entry() {
 	}
 
 	ifs.close();
-	ofstream ofs = get_tag_file_ofstream(get_tag_file_path());
+
+	std::ofstream ofs = get_tag_file_ofstream(get_tag_file_path());
 	save_tag_file(entries, ofs);
 }
 
@@ -339,7 +351,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	if (argc != 2) {
-		ofstream ofs = get_command_file_stream(get_cmd_file_path());
+		std::ofstream ofs = get_command_file_stream(get_cmd_file_path());
 		ofs << "@echo off\n";
 		ofs << "echo|set /p=\"Expected 1 argument. "
 			<< (argc - 1) << " received.\"\n";
@@ -349,14 +361,17 @@ int main(int argc, char* argv[]) {
 
 	create_previous_tag_entry();
 
-	string target_tag = argv[1];
-	string tag_file_name = get_tag_file_path();
-	string cmd_file_name = get_cmd_file_path();
+	std::string target_tag = argv[1];
+	std::string tag_file_name = get_tag_file_path();
+	std::string cmd_file_name = get_cmd_file_path();
 
-	ifstream ifs(tag_file_name);
-	ofstream ofs = get_command_file_stream(get_cmd_file_path());
-	size_t best_known_levenshtein_distance = SIZE_MAX;
-	string best_known_directory;
+	std::cout << "tag file: " << tag_file_name << "\n";
+	std::cout << "cmd file: " << cmd_file_name << "\n";
+
+	std::ifstream ifs(tag_file_name);
+	std::ofstream ofs = get_command_file_stream(get_cmd_file_path());
+	std::size_t best_known_levenshtein_distance = SIZE_MAX;
+	std::string best_known_directory;
 
 	if (ifs.eof()) {
 		ofs << "echo|set /p=\"The tag file is empty. Please edit ^\""
@@ -368,11 +383,11 @@ int main(int argc, char* argv[]) {
 	}
 
 	while (!ifs.eof() && ifs.good()) {
-		string tag;
-		string dir;
+		std::string tag;
+		std::string dir;
 
 		ifs >> tag;
-		getline(ifs, dir);
+		std::getline(ifs, dir);
 
 		trim(tag);
 		trim(dir);
